@@ -3,9 +3,9 @@ from unittest.mock import patch, AsyncMock
 from TriArbDemo import TriangularArbitrage  # Import the actual class
 import aiohttp
 
-
 class TestTriangularArbitrage(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
+        # Setup the object before each test
         self.arb = TriangularArbitrage()
         self.arb.prices = {}
         self.arb.symbol_info = {}
@@ -39,7 +39,9 @@ class TestTriangularArbitrage(unittest.IsolatedAsyncioTestCase):
         rate = self.arb.get_rate("BTCUSDT", "BTC", "ETH")
         self.assertIsNone(rate)
 
+
     def test_build_triangles(self):
+        # Prepare symbol info and asset to symbol mappings
         self.arb.symbol_info = {
             "BTCUSDT": {"base": "BTC", "quote": "USDT"},
             "ETHBTC": {"base": "ETH", "quote": "BTC"},
@@ -50,7 +52,7 @@ class TestTriangularArbitrage(unittest.IsolatedAsyncioTestCase):
             "USDT": {"BTCUSDT", "ETHUSDT"},
             "ETH": {"ETHBTC", "ETHUSDT"},
         }
-        self.arb.build_triangles()
+        self.arb.build_triangles()  # Assuming this method exists and is implemented
 
         # Check if the triangle exists in any order
         expected_triangle = {"BTCUSDT", "ETHBTC", "ETHUSDT"}
@@ -58,8 +60,9 @@ class TestTriangularArbitrage(unittest.IsolatedAsyncioTestCase):
 
     @patch("TriArbDemo.aiohttp.ClientSession.get", new_callable=AsyncMock)
     async def test_fetch_symbol_info(self, mock_get):
-        # Mock Binance API response
-        mock_get.return_value.__aenter__.return_value.json = AsyncMock(return_value={
+        # Mock response object
+        mock_response = AsyncMock()
+        mock_response.json = AsyncMock(return_value={
             "symbols": [
                 {"symbol": "BTCUSDT", "baseAsset": "BTC", "quoteAsset": "USDT", "status": "TRADING"},
                 {"symbol": "ETHBTC", "baseAsset": "ETH", "quoteAsset": "BTC", "status": "TRADING"},
@@ -67,6 +70,10 @@ class TestTriangularArbitrage(unittest.IsolatedAsyncioTestCase):
             ]
         })
 
+        # Configure the mock to support `async with`
+        mock_get.return_value.__aenter__.return_value = mock_response
+
+        # Call the async method
         await self.arb.fetch_symbol_info()
 
         # Verify symbol info and asset-to-symbol mappings
@@ -75,31 +82,36 @@ class TestTriangularArbitrage(unittest.IsolatedAsyncioTestCase):
         self.assertIn("BTCUSDT", self.arb.asset_to_symbols["USDT"])
 
     def test_find_arbitrage(self):
+        # Adjusted prices to create a potential arbitrage opportunity
         self.arb.symbol_info = {
             "BTCUSDT": {"base": "BTC", "quote": "USDT"},
             "ETHBTC": {"base": "ETH", "quote": "BTC"},
             "ETHUSDT": {"base": "ETH", "quote": "USDT"},
         }
         self.arb.prices = {
-            "BTCUSDT": {"bid": 30000.0, "ask": 30010.0},
-            "ETHBTC": {"bid": 0.07, "ask": 0.071},
-            "ETHUSDT": {"bid": 2100.0, "ask": 2110.0},
+            "BTCUSDT": {"bid": 30000.0, "ask": 30010.0},  # Buying BTC with USDT
+            "ETHBTC": {"bid": 0.07, "ask": 0.069},       # Adjusted ask price
+            "ETHUSDT": {"bid": 2105.0, "ask": 2110.0},   # Adjusted bid price
         }
+        
+        # Adding a triangle with an arbitrage path
         self.arb.triangles = [("BTCUSDT", "ETHBTC", "ETHUSDT")]
-
-        # Debug: Print initial state
+        
+        # Debugging output to check prices and triangles
         print("Initial Prices:", self.arb.prices)
         print("Triangles:", self.arb.triangles)
 
-        # Simulate a profitable arbitrage scenario
+        # Simulate the arbitrage finding logic
         self.arb.find_arbitrage()
 
-        # Debug: Print profitable trades
+        # Debugging output to see the result
         print("Profitable Trades:", self.arb.profitable_trades)
 
-        # Verify profitable trades
-        self.assertGreater(len(self.arb.profitable_trades), 0)
+        # Assert that at least one profitable trade was found
+        self.assertGreater(len(self.arb.profitable_trades), 0, "No profitable trades found!")
 
-
+   
+   
+   
 if __name__ == "__main__":
     unittest.main()
