@@ -8,8 +8,13 @@ from collections import defaultdict
 BINANCE_WS_URL = "wss://stream.binance.com:9443/ws/!ticker@arr"
 EXCHANGE_INFO_URL = "https://api.binance.com/api/v3/exchangeInfo"
 
+# ANSI escape codes for bright green text
+BRIGHT_GREEN = "\033[92m"
+RESET_COLOR = "\033[0m"
+
 class TriangularArbitrage:
     def __init__(self):
+        self.profitable_trades = []
         self.prices = {}  # {'BTCUSDT': {'bid': float, 'ask': float}, ...}
         self.symbol_info = {}  # {'BTCUSDT': {'base': 'BTC', 'quote': 'USDT'}}
         self.asset_to_symbols = defaultdict(set)  # {'BTC': set(['BTCUSDT', ...])}
@@ -71,6 +76,7 @@ class TriangularArbitrage:
             return None
 
     def find_arbitrage(self):
+        self.profitable_trades.clear()  # Clear previous cycle's trades
         for sym1, sym2, sym3 in self.triangles:
             base1 = self.symbol_info[sym1]["base"]
             quote1 = self.symbol_info[sym1]["quote"]
@@ -95,17 +101,32 @@ class TriangularArbitrage:
 
             print(f"[ARB] {sym1} → {sym2} → {sym3} | Return: {amt:.6f} | Profit: {profit:.4f}%")
 
+            if profit > 0:
+                summary = f"[ARB] {sym1} → {sym2} → {sym3} | Return: {amt:.6f} | Profit: {profit:.4f}%"
+                print(f"🟢 {summary}")
+                self.profitable_trades.append(summary)
+            else:
+                print(f"🔴 {sym1} → {sym2} → {sym3} | Return: {amt:.6f} | Profit: {profit:.4f}%")
+
+    def print_summary(self):
+        if self.profitable_trades:
+            print(BRIGHT_GREEN + "\n📊 Summary of Profitable Arbitrage Trades:" + RESET_COLOR)
+            for trade in self.profitable_trades:
+                print(BRIGHT_GREEN + trade + RESET_COLOR)
+        else:
+            print(BRIGHT_GREEN + "\n📊 No profitable arbitrage trades found in this cycle." + RESET_COLOR)
+
 async def main():
     arb = TriangularArbitrage()
-    print("🌐 Fetching Binance symbol info...")
-    await arb.fetch_symbol_info()
-    print("✅ Building trading triangles...")
-    arb.build_triangles()
+    try:
+        print("🌐 Fetching Binance symbol info...")
+        await arb.fetch_symbol_info()
+        print("✅ Building trading triangles...")
+        arb.build_triangles()
 
-    async with websockets.connect(BINANCE_WS_URL) as ws:
-        print("📡 Connected to Binance WebSocket. Listening for live price updates...")
-        while True:
-            try:
+        async with websockets.connect(BINANCE_WS_URL) as ws:
+            print("📡 Connected to Binance WebSocket. Listening for live price updates...")
+            while True:
                 msg = await ws.recv()
                 tickers = json.loads(msg)
 
@@ -117,9 +138,10 @@ async def main():
 
                 if arb.triangles:
                     arb.find_arbitrage()
-            except Exception as e:
-                print(f"⚠️ Error: {e}")
-                await asyncio.sleep(1)
+                    arb.print_summary()
+
+    except KeyboardInterrupt:
+        print("🛑 Terminated by user.")
 
 if __name__ == "__main__":
     try:
