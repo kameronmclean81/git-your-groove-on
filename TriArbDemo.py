@@ -203,14 +203,6 @@ async def run_arbitrage():
                     # Render the chart in the placeholder
                     chart_placeholder.altair_chart(final_chart, use_container_width=True)
 
-                    # Add visual labels below and beside the chart
-                    st.markdown("""
-                        **Chart Legend:**
-                        - **Red Line**: Represents cumulative profits (£).
-                        - **X-Axis**: Represents the number of trades (integer values).
-                        - **Tracker Points**: Show individual profit values on the timeline.
-                    """)
-
                 await asyncio.sleep(3)
 
             except Exception as e:
