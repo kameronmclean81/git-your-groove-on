@@ -3,6 +3,8 @@ import json
 import aiohttp
 import websockets
 import streamlit as st
+import pandas as pd
+import altair as alt
 from collections import defaultdict, deque
 
 # Constants
@@ -164,10 +166,42 @@ async def run_arbitrage():
                     history_placeholder.markdown(history_md)
 
                 if cumulative_profits:
-                    chart_data = {
-                        "Profit (£)": cumulative_profits
-                    }
-                    chart_placeholder.line_chart(chart_data)
+                    chart_data = pd.DataFrame({
+                        "Trade Count": trade_count,  # Custom x-axis data
+                        "Profit (£)": cumulative_profits  # Custom y-axis data
+                    })
+
+                    # Create the base line chart for cumulative profits
+                    base_chart = alt.Chart(chart_data).mark_line().encode(
+                        x=alt.X("Trade Count:Q", title="Number of Trades", axis=alt.Axis(format="d")),  # Force integer display
+                        y=alt.Y("Profit (£):Q", title="Profits (£)")  # Custom y-axis label
+                    ).properties(
+                        title="Cumulative Profits Over Trades"  # Add a title to the chart
+                    )
+
+                    # Add tracker points to show profit values on the timeline
+                    points = alt.Chart(chart_data).mark_point(size=50, color="red").encode(
+                        x="Trade Count:Q",
+                        y="Profit (£):Q",
+                        tooltip=["Trade Count", "Profit (£)"]  # Tooltip to show detailed values
+                    )
+
+                    # Add external labels for the chart
+                    labels = alt.Chart(chart_data).mark_text(
+                        align="left",
+                        dx=5,  # Offset for label placement
+                        dy=-5  # Offset for label placement
+                    ).encode(
+                        x="Trade Count:Q",
+                        y="Profit (£):Q",
+                        text=alt.Text("Profit (£):Q", format=".2f")  # Display profit values as labels
+                    )
+
+                    # Combine the line chart, tracker points, and labels
+                    final_chart = base_chart + points + labels
+
+                    # Render the chart in the placeholder
+                    chart_placeholder.altair_chart(final_chart, use_container_width=True)
 
                 await asyncio.sleep(3)
 
