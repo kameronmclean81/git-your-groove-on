@@ -131,8 +131,14 @@ if __name__ == "__main__":
 
 def run_arbitrage():
     try:
+        from io import StringIO
+        import sys
+        
+        buffer = StringIO()
+        sys.stdout = buffer  # Redirect stdout to the buffer
+        
         asyncio.run(main())
-    except KeyboardInterrupt:
-        print("🛑 Terminated by user.")
+        sys.stdout = sys.__stdout__  # Reset stdout
+        return buffer.getvalue()  # Return the captured output
     except Exception as e:
-        print(f"⚠️ Error: {e}")
+        return f"Error running arbitrage: {e}"

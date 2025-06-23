@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <title>Arbitrage GUI</title>
+    </head>
+    <body>
+        <h1>Arbitrage GUI</h1>
+        <form method="POST" action="/">
+            <button type="submit">Run Arbitrage</button>
+        </form>
+
+        {% if result %}
+        <h2>Arbitrage Results:</h2>
+        <pre>{{ result }}</pre>
+        {% endif %}
+    </body>
+</html>
