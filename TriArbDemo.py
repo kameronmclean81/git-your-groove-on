@@ -9,16 +9,14 @@ from collections import defaultdict, deque
 BINANCE_WS_URL = "wss://stream.binance.com:9443/ws/!ticker@arr"
 EXCHANGE_INFO_URL = "https://api.binance.com/api/v3/exchangeInfo"
 
-# Arbitrage logic
 class TriangularArbitrage:
     def __init__(self):
-        self.profitable_trades = []
         self.prices = {}
         self.symbol_info = {}
         self.asset_to_symbols = defaultdict(set)
         self.triangles = []
         self.best_trade = None
-        self.history = deque(maxlen=10)
+        self.history = deque(maxlen=50)
 
     async def fetch_symbol_info(self):
         async with aiohttp.ClientSession() as session:
@@ -43,11 +41,7 @@ class TriangularArbitrage:
             base1, quote1 = self.symbol_info[sym1]["base"], self.symbol_info[sym1]["quote"]
             for sym2 in self.asset_to_symbols.get(quote1, []):
                 base2, quote2 = self.symbol_info[sym2]["base"], self.symbol_info[sym2]["quote"]
-                mid = None
-                if base2 == quote1:
-                    mid = quote2
-                elif quote2 == quote1:
-                    mid = base2
+                mid = quote2 if base2 == quote1 else base2 if quote2 == quote1 else None
                 if mid and mid != base1:
                     for sym3 in self.asset_to_symbols.get(mid, []):
                         base3, quote3 = self.symbol_info[sym3]["base"], self.symbol_info[sym3]["quote"]
@@ -73,7 +67,6 @@ class TriangularArbitrage:
             return None
 
     def find_arbitrage(self):
-        self.profitable_trades.clear()
         best = None
 
         for sym1, sym2, sym3 in self.triangles:
@@ -86,16 +79,14 @@ class TriangularArbitrage:
             amt = 1.0
 
             rate1 = self.get_rate(sym1, start, quote1)
-            rate2 = self.get_rate(sym2, quote1, quote2 := (
-                self.symbol_info[sym2]["base"] if self.symbol_info[sym2]["base"] != quote1 else self.symbol_info[sym2]["quote"]))
+            quote2 = self.symbol_info[sym2]["base"] if self.symbol_info[sym2]["base"] != quote1 else self.symbol_info[sym2]["quote"]
+            rate2 = self.get_rate(sym2, quote1, quote2)
             rate3 = self.get_rate(sym3, quote2, start)
 
             if None in (rate1, rate2, rate3):
                 continue
 
-            amt *= rate1
-            amt *= rate2
-            amt *= rate3
+            amt *= rate1 * rate2 * rate3
             profit = (amt - 1.0) * 100
 
             summary = {
@@ -104,32 +95,36 @@ class TriangularArbitrage:
                 "profit": profit
             }
 
-            if profit > 0:
-                self.profitable_trades.append(summary)
-                if not best or summary["profit"] > best["profit"]:
-                    best = summary
+            if profit > 0 and (not best or summary["profit"] > best["profit"]):
+                best = summary
 
         if best:
             self.best_trade = best
             self.history.appendleft(best)
 
-# Streamlit page setup
+# Streamlit UI
 st.set_page_config(page_title="Crypto Arbitrage Tracker", layout="wide")
 st.title("📈 Live Triangular Arbitrage Opportunities")
-gbp_amount = st.number_input("Enter your GBP investment amount:", min_value=10.0, value=1000.0)
 
-# Create a placeholder for live updates
+initial_amount = st.number_input("Enter your GBP investment amount:", min_value=10.0, value=1000.0)
 status_placeholder = st.empty()
 summary_placeholder = st.empty()
 history_placeholder = st.empty()
+chart_placeholder = st.empty()
 
 arb = TriangularArbitrage()
+gbp_balance = initial_amount
+cumulative_profits = []
+trade_count = []
 
 async def run_arbitrage():
+    global gbp_balance
+
     await arb.fetch_symbol_info()
     arb.build_triangles()
 
     async with websockets.connect(BINANCE_WS_URL) as ws:
+        count = 0
         while True:
             try:
                 msg = await ws.recv()
@@ -144,12 +139,20 @@ async def run_arbitrage():
 
                 if arb.best_trade:
                     trade = arb.best_trade
-                    real_return = gbp_amount * trade["return"]
+                    new_balance = gbp_balance * trade["return"]
+                    profit = new_balance - gbp_balance
+                    gbp_balance = new_balance
+
+                    cumulative_profits.append(gbp_balance - initial_amount)
+                    trade_count.append(count)
+                    count += 1
+
                     summary_placeholder.markdown(f"""
                         ### 🥇 Best Arbitrage Trade
                         - **Path**: `{trade["path"]}`
+                        - **Profit**: `£{profit:.2f}`
+                        - **New Balance**: `£{gbp_balance:.2f}`
                         - **Return %**: `{trade["profit"]:.2f}%`
-                        - **Final GBP**: `£{real_return:.2f}`
                     """)
                 else:
                     summary_placeholder.markdown("⏳ No profitable arbitrage opportunities found.")
@@ -160,7 +163,13 @@ async def run_arbitrage():
                         history_md += f"- `{h['path']}` | Profit: `{h['profit']:.2f}%`\n"
                     history_placeholder.markdown(history_md)
 
-                await asyncio.sleep(3)  # update every 3s
+                if cumulative_profits:
+                    chart_data = {
+                        "Profit (£)": cumulative_profits
+                    }
+                    chart_placeholder.line_chart(chart_data)
+
+                await asyncio.sleep(3)
 
             except Exception as e:
                 status_placeholder.error(f"⚠️ Error: {e}")
@@ -171,3 +180,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+#cd /Users/Administrator/PyCharmProjects/TriArb
